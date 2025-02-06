@@ -1,31 +1,42 @@
 import os
 import cv2
+import yaml
 import numpy as np
 from multiprocessing import Process, Queue
 from pathlib import Path
 from itertools import chain
 
-def image_stream(queue, imagedir, calib, stride, skip=0):
+def image_stream(queue, sequence_path, rgb_txt, calibration_yaml):
     """ image generator """
 
-    calib = np.loadtxt(calib, delimiter=" ")
-    fx, fy, cx, cy = calib[:4]
+    # Load calibration
+    with open(calibration_yaml, 'r') as file:
+        lines = file.readlines()
+    if lines and lines[0].strip() == '%YAML:1.0':
+        lines = lines[1:]
 
+    calibration = yaml.safe_load(''.join(lines))  
+
+    fx, fy, cx, cy = calibration["Camera.fx"],calibration["Camera.fy"],calibration["Camera.cx"],calibration["Camera.cy"]
     K = np.eye(3)
-    K[0,0] = fx
-    K[0,2] = cx
-    K[1,1] = fy
-    K[1,2] = cy
+    K[0, 0] = fx
+    K[0, 2] = cx
+    K[1, 1] = fy
+    K[1, 2] = cy
 
-    img_exts = ["*.png", "*.jpeg", "*.jpg"]
-    image_list = sorted(chain.from_iterable(Path(imagedir).glob(e) for e in img_exts))[skip::stride]
-    assert os.path.exists(imagedir), imagedir
+    # Load paths
+    image_list = []
+    timestamps = []
+    with open(rgb_txt, 'r') as file:
+        for line in file:
+            timestamp, path, *extra = line.strip().split(' ')
+            image_list.append(os.path.join(sequence_path, path))
+            timestamps.append(float(timestamp))    
 
+    # Load images
     for t, imfile in enumerate(image_list):
         image = cv2.imread(str(imfile))
-        if len(calib) > 4:
-            image = cv2.undistort(image, K, calib[4:])
-
+       
         if 0:
             image = cv2.resize(image, None, fx=0.5, fy=0.5)
             intrinsics = np.array([fx / 2, fy / 2, cx / 2, cy / 2])
@@ -36,7 +47,7 @@ def image_stream(queue, imagedir, calib, stride, skip=0):
         h, w, _ = image.shape
         image = image[:h-h%16, :w-w%16]
 
-        queue.put((t, image, intrinsics))
+        queue.put((timestamps[t], image, intrinsics))
 
     queue.put((-1, image, intrinsics))
 
