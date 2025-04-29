@@ -1,4 +1,5 @@
 import os.path as osp
+import os
 from setuptools import setup, find_packages
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
@@ -23,12 +24,12 @@ setup(
                 'nvcc': ['-O3'],
             },
             include_dirs=[
-                osp.join(ROOT, 'thirdparty/eigen-3.4.0')]
+                osp.join(os.environ["CONDA_PREFIX"], 'include/eigen3')]
             ),
         CUDAExtension('lietorch_backends', 
             include_dirs=[
                 osp.join(ROOT, 'dpvo/lietorch/include'), 
-                osp.join(ROOT, 'thirdparty/eigen-3.4.0')],
+                osp.join(os.environ["CONDA_PREFIX"], 'include/eigen3')],
             sources=[
                 'dpvo/lietorch/src/lietorch.cpp', 
                 'dpvo/lietorch/src/lietorch_gpu.cu',

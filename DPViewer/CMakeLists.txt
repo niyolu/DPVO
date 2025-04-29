@@ -21,6 +21,7 @@ SET(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCH_LIST})
 
 list(APPEND CMAKE_PREFIX_PATH ${TORCH_PATH})
 
+find_package(pybind11 REQUIRED)
 find_package(Torch REQUIRED)
 find_library(TORCH_PYTHON_LIBRARY torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib")
 
@@ -29,7 +30,6 @@ include_directories(
     ${TORCH_INCLUDE_DIRS} 
 ) 
 
-add_subdirectory(pybind11)
 add_subdirectory(dpviewer)
 
 
