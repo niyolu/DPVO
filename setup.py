@@ -24,14 +24,16 @@ setup(
                 'nvcc': ['-O3'],
             },
             include_dirs=[
-                osp.join(os.environ["CONDA_PREFIX"], 'include/eigen3')],
+                osp.join(os.environ["CONDA_PREFIX"], 'include/eigen3'),
                 #osp.join(os.environ["PREFIX"], 'include/eigen3')
+                ]
             ),
         CUDAExtension('lietorch_backends', 
             include_dirs=[
                 osp.join(ROOT, 'dpvo/lietorch/include'), 
-                osp.join(os.environ["CONDA_PREFIX"], 'include/eigen3')],
+                osp.join(os.environ["CONDA_PREFIX"], 'include/eigen3'),
                 #osp.join(os.environ["PREFIX"], 'include/eigen3')
+            ],
             sources=[
                 'dpvo/lietorch/src/lietorch.cpp', 
                 'dpvo/lietorch/src/lietorch_gpu.cu',
