@@ -10,6 +10,12 @@ ROOT = osp.dirname(osp.abspath(__file__))
 setup(
     name='dpvo',
     packages=find_packages(),
+    py_modules=['vslamlab_dpvo_mono'],
+    entry_points={
+        'console_scripts': [
+            'vslamlab_dpvo_mono = vslamlab_dpvo_mono:main',
+        ]
+    },
     ext_modules=[
         CUDAExtension('cuda_corr',
             sources=['dpvo/altcorr/correlation.cpp', 'dpvo/altcorr/correlation_kernel.cu'],

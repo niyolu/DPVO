@@ -10,8 +10,7 @@ from evo.tools import file_interface
 
 from dpvo.config import cfg
 from dpvo.dpvo import DPVO
-from dpvo.plot_utils import plot_trajectory, save_output_for_COLMAP, save_ply
-from dpvo.stream import image_stream, video_stream
+from dpvo.stream import image_stream
 from dpvo.utils import Timer
 
 SKIP = 0
@@ -51,8 +50,8 @@ def run(cfg, network, sequence_path, rgb_txt, calibration_yaml, viz=False, timei
 
     return slam.terminate(), (points, colors, (*intrinsics, H, W))
 
+def main():
 
-if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--sequence_path", type=str, help="path to image directory")
@@ -65,39 +64,28 @@ if __name__ == '__main__':
 
     parser.add_argument('--network', type=str, default='dpvo.pth')
     parser.add_argument('--name', type=str, help='name your run', default='result')
-    parser.add_argument('--config', default="config/default.yaml")
     parser.add_argument('--timeit', action='store_true')
-    #parser.add_argument('--plot', action="store_true")
     parser.add_argument('--opts', nargs='+', default=[])
-    #parser.add_argument('--save_ply', action="store_true")
-    #parser.add_argument('--save_colmap', action="store_true")
 
     args = parser.parse_args()
 
-    cfg.merge_from_file(args.config)
+    cfg.merge_from_file(args.settings_yaml)
     cfg.merge_from_list(args.opts)
 
     print("Running with config...")
-    print(cfg)
+    print(args.settings_yaml)
+    #print(cfg)
 
     (poses, tstamps), (points, colors, calib) = run(cfg, args.network, 
                                                     args.sequence_path, args.rgb_txt, args.calibration_yaml, 
                                                     bool(int(args.verbose)), args.timeit)
     trajectory = PoseTrajectory3D(positions_xyz=poses[:,:3], orientations_quat_wxyz=poses[:, [6, 3, 4, 5]], timestamps=tstamps)
 
-    #if args.save_ply:
-    #    save_ply(args.name, points, colors)
-
-    #if args.save_colmap:
-    #    save_output_for_COLMAP(args.name, trajectory, points, colors, *calib)
-
     keyFrameTrajectory_txt = os.path.join(args.exp_folder, args.exp_it.zfill(5) + '_KeyFrameTrajectory' + '.txt')
     file_interface.write_tum_trajectory_file(keyFrameTrajectory_txt, trajectory)
-
-    #if args.plot:
-    #    Path("trajectory_plots").mkdir(exist_ok=True)
-    #    plot_trajectory(trajectory, title=f"DPVO Trajectory Prediction for {args.name}", filename=f"trajectory_plots/{args.name}.pdf")
-
+ 
+if __name__ == '__main__':
+    main()
 
         
 
