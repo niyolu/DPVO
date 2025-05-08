@@ -22,6 +22,7 @@ SET(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCH_LIST})
 list(APPEND CMAKE_PREFIX_PATH ${TORCH_PATH})
 
 find_package(pybind11 REQUIRED)
+find_package(CUDAToolkit REQUIRED)
 find_package(Torch REQUIRED)
 find_library(TORCH_PYTHON_LIBRARY torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib")
 
