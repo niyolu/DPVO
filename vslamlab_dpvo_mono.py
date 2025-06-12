@@ -67,7 +67,7 @@ def main():
     parser.add_argument('--timeit', action='store_true')
     parser.add_argument('--opts', nargs='+', default=[])
 
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
 
     cfg.merge_from_file(args.settings_yaml)
     cfg.merge_from_list(args.opts)
