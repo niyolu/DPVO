@@ -10,6 +10,8 @@
 #include <iostream>
 #include <thread>
 
+#include <future>
+
 #include "viewer_cuda.h"
 
 typedef unsigned char uchar;
@@ -24,6 +26,9 @@ class Viewer {
       const torch::Tensor points,
       const torch::Tensor colors,
       const torch::Tensor intrinsics);
+
+      ~Viewer();
+    
 
     void close() {
       running = false;
@@ -40,12 +45,20 @@ class Viewer {
       mtx.unlock();
     }
 
+    
+     void wait_until_ready() {
+      // This will block until the promise is set in the run() thread
+      m_init_future.get();
+    }
+
     // main visualization
     void run();
 
   private:
     bool running;
     std::thread tViewer;
+    std::promise<void> m_init_promise;
+    std::future<void> m_init_future;
 
     int w;
     int h;
@@ -87,7 +100,8 @@ Viewer::Viewer(
       const torch::Tensor points,
       const torch::Tensor colors,
       const torch::Tensor intrinsics)
-  : image(image), poses(poses), points(points), colors(colors), intrinsics(intrinsics)
+  : image(image), poses(poses), points(points), colors(colors), intrinsics(intrinsics),
+    m_init_future(m_init_promise.get_future())
 {
   running = true;
   redraw = true;
@@ -100,6 +114,12 @@ Viewer::Viewer(
 
   tViewer = std::thread(&Viewer::run, this);
 };
+
+Viewer::~Viewer() {
+  if (running) { close(); }
+  if (tViewer.joinable()) { tViewer.join(); }
+}
+
 
 void Viewer::drawPoints() {
   float *xyz_ptr;
@@ -224,77 +244,92 @@ void Viewer::destroyVBO() {
 
 void Viewer::run() {
 
-  // initialize OpenGL buffers
+  try {
 
-  pangolin::CreateWindowAndBind("DPVO", 2*640, 2*480);
+    // Sanity check for WSL2/multi-thread environments:
+    // Explicitly set the CUDA device on this new thread.
+    cudaSetDevice(0); // Assuming device 0
 
-	const int UI_WIDTH = 180;
-  glEnable(GL_DEPTH_TEST);
+    // initialize OpenGL buffers
 
-  pangolin::OpenGlRenderState Visualization3D_camera(
-		pangolin::ProjectionMatrix(w, h,400,400,w/2,h/2,0.1,500),
-		pangolin::ModelViewLookAt(-0,-1,-1, 0,0,0, pangolin::AxisNegY));
+    pangolin::CreateWindowAndBind("DPVO", 2*640, 2*480);
 
-  pangolin::View& Visualization3D_display = pangolin::CreateDisplay()
-		.SetBounds(0.0, 1.0, pangolin::Attach::Pix(UI_WIDTH), 1.0, -w/(float)h)
-		.SetHandler(new pangolin::Handler3D(Visualization3D_camera));
+    const int UI_WIDTH = 180;
+    glEnable(GL_DEPTH_TEST);
 
-  initVBO();
+    pangolin::OpenGlRenderState Visualization3D_camera(
+      pangolin::ProjectionMatrix(w, h,400,400,w/2,h/2,0.1,500),
+      pangolin::ModelViewLookAt(-0,-1,-1, 0,0,0, pangolin::AxisNegY));
 
+    pangolin::View& Visualization3D_display = pangolin::CreateDisplay()
+      .SetBounds(0.0, 1.0, pangolin::Attach::Pix(UI_WIDTH), 1.0, -w/(float)h)
+      .SetHandler(new pangolin::Handler3D(Visualization3D_camera));
 
-  // UI Knobs
-  // pangolin::CreatePanel("ui").SetBounds(0.8, 1.0, 0.0, pangolin::Attach::Pix(UI_WIDTH));
-  // pangolin::Var<double> settings_filterThresh("ui.filter",0.5,1e-2,1e2,true);
-  // pangolin::Var<int> settings_frameIndex("ui.index", 0, 0, nFrames-1);
-  // pangolin::Var<bool> settings_showSparse("ui.sparse",true,true);
-  // pangolin::Var<bool> settings_showDense("ui.dense",true,true);
-  // pangolin::Var<bool> settings_showForeground("ui.foreground",true,true);
-  // pangolin::Var<bool> settings_showBackground("ui.background",true,true);
+    initVBO();
 
-
-	pangolin::View& d_video = pangolin::Display("imgVideo").SetAspect(w/(float)h);
-	pangolin::GlTexture texVideo(w,h,GL_RGB,false,0,GL_RGB,GL_UNSIGNED_BYTE);
-
-  pangolin::CreateDisplay()
-    .SetBounds(0.0, 0.3, 0.0, 1.0)
-    .SetLayout(pangolin::LayoutEqual)
-    .AddDisplay(d_video);
+    // UI Knobs
+    // pangolin::CreatePanel("ui").SetBounds(0.8, 1.0, 0.0, pangolin::Attach::Pix(UI_WIDTH));
+    // pangolin::Var<double> settings_filterThresh("ui.filter",0.5,1e-2,1e2,true);
+    // pangolin::Var<int> settings_frameIndex("ui.index", 0, 0, nFrames-1);
+    // pangolin::Var<bool> settings_showSparse("ui.sparse",true,true);
+    // pangolin::Var<bool> settings_showDense("ui.dense",true,true);
+    // pangolin::Var<bool> settings_showForeground("ui.foreground",true,true);
+    // pangolin::Var<bool> settings_showBackground("ui.background",true,true);
 
 
-  while( !pangolin::ShouldQuit() && running ) {    
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glClearColor(1.0f,1.0f,1.0f,1.0f);
+    pangolin::View& d_video = pangolin::Display("imgVideo").SetAspect(w/(float)h);
+    pangolin::GlTexture texVideo(w,h,GL_RGB,false,0,GL_RGB,GL_UNSIGNED_BYTE);
 
-    Visualization3D_display.Activate(Visualization3D_camera);
+    pangolin::CreateDisplay()
+      .SetBounds(0.0, 0.3, 0.0, 1.0)
+      .SetLayout(pangolin::LayoutEqual)
+      .AddDisplay(d_video);
+
+    // signal that initialization is complete
+    m_init_promise.set_value();
+
   
-    // maybe possible to draw cameras without copying to CPU?
-    transformMatrix = poseToMatrix(poses);
-    transformMatrix = transformMatrix.transpose(1,2);
-    transformMatrix = transformMatrix.contiguous().to(torch::kCPU);
 
-    // draw poses using OpenGL
-    drawPoints();
-    drawPoses();
+    while( !pangolin::ShouldQuit() && running ) {    
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+      glClearColor(1.0f,1.0f,1.0f,1.0f);
 
-    mtx.lock();
-    if (redraw) {
-      redraw = false;
-      texVideo.Upload(image.data_ptr(), GL_BGR, GL_UNSIGNED_BYTE);
+      Visualization3D_display.Activate(Visualization3D_camera);
+    
+      // maybe possible to draw cameras without copying to CPU?
+      transformMatrix = poseToMatrix(poses);
+      transformMatrix = transformMatrix.transpose(1,2);
+      transformMatrix = transformMatrix.contiguous().to(torch::kCPU);
+
+      // draw poses using OpenGL
+      drawPoints();
+      drawPoses();
+
+      mtx.lock();
+      if (redraw) {
+        redraw = false;
+        texVideo.Upload(image.data_ptr(), GL_BGR, GL_UNSIGNED_BYTE);
+      }
+      mtx.unlock();
+
+      d_video.Activate();
+      glColor4f(1.0f,1.0f,1.0f,1.0f);
+      texVideo.RenderToViewportFlipY();
+
+      pangolin::FinishFrame();
     }
-    mtx.unlock();
-
-    d_video.Activate();
-    glColor4f(1.0f,1.0f,1.0f,1.0f);
-    texVideo.RenderToViewportFlipY();
-
-    pangolin::FinishFrame();
+  } catch (const std::exception& e) {
+    // Handle any initialization failures
+    std::cerr << "Exception in viewer thread during initialization: " << e.what() << std::endl;
+    m_init_promise.set_exception(std::current_exception());
+    return;
   }
 
   // destroy OpenGL buffers
   // destroyVBO();
   running = false;
 
-  exit(1);
+  exit(1); // hacky probably related to the previously missing destructor call
 }
 
 
@@ -309,5 +344,6 @@ PYBIND11_MODULE(dpviewerx, m) {
                   const torch::Tensor,
                   const torch::Tensor>())
     .def("update_image", &Viewer::update_image)
-    .def("join", &Viewer::join);
+    .def("join", &Viewer::join)
+    .def("wait_until_ready", &Viewer::wait_until_ready);
 }

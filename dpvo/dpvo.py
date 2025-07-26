@@ -122,6 +122,13 @@ class DPVO:
             self.pg.points_,
             self.pg.colors_,
             intrinsics_)
+        
+        try:
+            self.viewer.wait_until_ready()
+        except Exception as e:
+            print(f"Failed to initialize viewer: {e}")
+            # Handle the error, maybe set viz=False and continue without GUI
+            self.viewer = None
 
     @property
     def poses(self):

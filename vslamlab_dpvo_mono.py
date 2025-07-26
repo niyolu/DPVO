@@ -13,12 +13,19 @@ from dpvo.dpvo import DPVO
 from dpvo.stream import image_stream
 from dpvo.utils import Timer
 
+if __name__ == "__main__":
+    import debugpy
+    debugpy.listen(("localhost", 5678))
+    print("Waiting for debugger attach on port 5678...")
+    debugpy.wait_for_client()
+
 SKIP = 0
 
 def show_image(image, t=0):
     image = image.permute(1, 2, 0).cpu().numpy()
     cv2.imshow('image', image / 255.0)
     cv2.waitKey(t)
+    
 
 @torch.no_grad()
 def run(cfg, network, sequence_path, rgb_txt, calibration_yaml, viz=False, timeit=False):
@@ -30,7 +37,9 @@ def run(cfg, network, sequence_path, rgb_txt, calibration_yaml, viz=False, timei
     reader.start()
 
     while 1:
+        print("trying to get from queue")
         (t, image, intrinsics) = queue.get()
+        print("got data from queue: ", t)
         if t < 0: break
 
         image = torch.from_numpy(image).permute(2,0,1).cuda()
@@ -41,7 +50,9 @@ def run(cfg, network, sequence_path, rgb_txt, calibration_yaml, viz=False, timei
             slam = DPVO(cfg, network, ht=H, wd=W, viz=viz)
 
         with Timer("SLAM", enabled=timeit):
+            print("running dpvo t=", t)
             slam(t, image, intrinsics)
+        # slam(t, image, intrinsics)
 
     reader.join()
 
@@ -51,7 +62,6 @@ def run(cfg, network, sequence_path, rgb_txt, calibration_yaml, viz=False, timei
     return slam.terminate(), (points, colors, (*intrinsics, H, W))
 
 def main():
-
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--sequence_path", type=str, help="path to image directory")
@@ -73,8 +83,8 @@ def main():
     cfg.merge_from_list(args.opts)
 
     print("Running with config...")
+    print("SKR")
     print(args.settings_yaml)
-    #print(cfg)
 
     (poses, tstamps), (points, colors, calib) = run(cfg, args.network, 
                                                     args.sequence_path, args.rgb_txt, args.calibration_yaml, 
@@ -88,4 +98,3 @@ if __name__ == '__main__':
     main()
 
         
-
