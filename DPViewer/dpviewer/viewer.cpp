@@ -121,6 +121,44 @@ void Viewer::run() {
     destroyVBO();
 }
 
+void Viewer::drawPoints() {
+  float *xyz_ptr;
+  uchar *rgb_ptr;
+  size_t xyz_bytes;
+  size_t rgb_bytes; 
+
+  unsigned int size_xyz = 3 * points.size(0) * sizeof(float);
+  unsigned int size_rgb = 3 * points.size(0) * sizeof(uchar);
+
+  cudaGraphicsResourceGetMappedPointer((void **) &xyz_ptr, &xyz_bytes, xyz_res);
+  cudaGraphicsResourceGetMappedPointer((void **) &rgb_ptr, &rgb_bytes, rgb_res);
+
+  float *xyz_data = points.data_ptr<float>();
+  cudaMemcpy(xyz_ptr, xyz_data, xyz_bytes, cudaMemcpyDeviceToDevice);
+
+  uchar *rgb_data = colors.data_ptr<uchar>();
+  cudaMemcpy(rgb_ptr, rgb_data, rgb_bytes, cudaMemcpyDeviceToDevice);
+
+  // bind color buffer
+  glBindBuffer(GL_ARRAY_BUFFER, cbo);
+  glColorPointer(3, GL_UNSIGNED_BYTE, 0, 0);
+  glEnableClientState(GL_COLOR_ARRAY);
+
+  glBindBuffer(GL_ARRAY_BUFFER, vbo);
+  glVertexPointer(3, GL_FLOAT, 0, 0);
+
+  // bind vertex buffer
+  glEnableClientState(GL_VERTEX_ARRAY);
+  glDrawArrays(GL_POINTS, 0, points.size(0));
+  glDisableClientState(GL_VERTEX_ARRAY);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+  glDisableClientState(GL_COLOR_ARRAY);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+}
+
+
 void Viewer::drawPoses() {
 
   float *tptr = transformMatrix.data_ptr<float>();
