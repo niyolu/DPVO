@@ -13,11 +13,11 @@ from dpvo.dpvo import DPVO
 from dpvo.stream import image_stream
 from dpvo.utils import Timer
 
-if __name__ == "__main__":
-    import debugpy
-    debugpy.listen(("localhost", 5678))
-    print("Waiting for debugger attach on port 5678...")
-    debugpy.wait_for_client()
+# if __name__ == "__main__":
+#     import debugpy
+#     debugpy.listen(("localhost", 5678))
+#     print("Waiting for debugger attach on port 5678...")
+#     debugpy.wait_for_client()
 
 SKIP = 0
 
@@ -96,5 +96,3 @@ def main():
  
 if __name__ == '__main__':
     main()
-
-        

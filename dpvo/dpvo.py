@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import threading
 import torch.multiprocessing as mp
 import torch.nn.functional as F
 
@@ -76,6 +77,7 @@ class DPVO:
         self.pyramid = (self.fmap1_, self.fmap2_)
 
         self.viewer = None
+        self.viewer_thread = None # Add a placeholder for the thread object
         if viz:
             self.start_viewer()
 
@@ -123,12 +125,8 @@ class DPVO:
             self.pg.colors_,
             intrinsics_)
         
-        try:
-            self.viewer.wait_until_ready()
-        except Exception as e:
-            print(f"Failed to initialize viewer: {e}")
-            # Handle the error, maybe set viz=False and continue without GUI
-            self.viewer = None
+        self.viewer_thread = threading.Thread(target=self.viewer.run, daemon=True)
+        self.viewer_thread.start()
 
     @property
     def poses(self):
@@ -198,8 +196,8 @@ class DPVO:
         poses = lietorch.stack(poses, dim=0)
         poses = poses.inv().data.cpu().numpy()
         tstamps = np.array(self.tlist, dtype=np.float64)
-        if self.viewer is not None:
-            self.viewer.join()
+        if self.viewer_thread is not None:
+            self.viewer_thread.join()
 
         # Poses: x y z qx qy qz qw
         return poses, tstamps
