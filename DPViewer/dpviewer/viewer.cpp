@@ -28,7 +28,6 @@ public:
 
     // This is now a blocking call that runs the entire GUI loop
     void run();
-
     void update_image(torch::Tensor img);
 
 private:
@@ -37,22 +36,18 @@ private:
     void initVBO();
     void destroyVBO();
 
-    // Data Tensors (owned by the main DPVO object)
     torch::Tensor image;
     torch::Tensor poses;
     torch::Tensor points;
     torch::Tensor colors;
     torch::Tensor intrinsics;
 
-    // Internal state
-    int w;
-    int h;
+    int w, h;
     int nFrames, nPoints;
     bool redraw;
     torch::Tensor transformMatrix;
-    std::mutex mtx; // Mutex to protect image updates
+    std::mutex mtx;
 
-    // OpenGL/CUDA resources
     GLuint vbo, cbo;
     struct cudaGraphicsResource *xyz_res;
     struct cudaGraphicsResource *rgb_res;
@@ -64,9 +59,7 @@ Viewer::Viewer(
     const torch::Tensor points,
     const torch::Tensor colors,
     const torch::Tensor intrinsics)
-    : image(image), poses(poses), points(points), colors(colors), intrinsics(intrinsics)
-{
-    // Constructor does NOT start a thread. It just sets up the object.
+    : image(image), poses(poses), points(points), colors(colors), intrinsics(intrinsics) {
     redraw = true;
     h = image.size(0);
     w = image.size(1);
@@ -77,16 +70,11 @@ Viewer::Viewer(
 void Viewer::update_image(torch::Tensor img) {
     std::lock_guard<std::mutex> lock(mtx);
     redraw = true;
-    // The main thread will pass a CUDA tensor, move it to CPU for rendering
     this->image = img.permute({1, 2, 0}).to(torch::kCPU);
 }
 
 void Viewer::run() {
-    // This function is now the entry point for the Python-managed thread.
-    // It will not return until the Pangolin window is closed.
-
-    cudaSetDevice(0); // Set the CUDA device for this thread
-
+    cudaSetDevice(0);
     pangolin::CreateWindowAndBind("DPVO", 1280, 960);
     glEnable(GL_DEPTH_TEST);
 
@@ -110,12 +98,8 @@ void Viewer::run() {
     while (!pangolin::ShouldQuit()) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-
         d_cam.Activate(s_cam);
         
-        // No need for a render mutex now, as the main thread updates the tensors
-        // and the viewer thread just reads whatever is there at the moment of rendering.
-        // This can cause some visual tearing, but it will prevent crashes.
         transformMatrix = poseToMatrix(poses).transpose(1, 2).contiguous().to(torch::kCPU);
         drawPoints();
         drawPoses();
@@ -131,16 +115,95 @@ void Viewer::run() {
         d_video.Activate();
         glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
         texVideo.RenderToViewportFlipY();
-
         pangolin::FinishFrame();
     }
 
-    // Cleanup before the thread exits
     destroyVBO();
 }
 
-// ... (drawPoints, drawPoses, initVBO, destroyVBO implementations remain the same as before) ...
-// Ensure they are defined here. For brevity I am omitting them, but they must be present.
+void Viewer::drawPoses() {
+
+  float *tptr = transformMatrix.data_ptr<float>();
+
+  const int NUM_POINTS = 8;
+  const int NUM_LINES = 10;
+
+  const float CAM_POINTS[NUM_POINTS][3] = {
+    { 0,   0,   0},
+    {-1,  -1, 1.5},
+    { 1,  -1, 1.5},
+    { 1,   1, 1.5},
+    {-1,   1, 1.5},
+    {-0.5, 1, 1.5},
+    { 0.5, 1, 1.5},
+    { 0, 1.2, 1.5}};
+
+  const int CAM_LINES[NUM_LINES][2] = {
+    {1,2}, {2,3}, {3,4}, {4,1}, {1,0}, {0,2}, {3,0}, {0,4}, {5,7}, {7,6}};
+
+  const float SZ = 0.05;
+
+  glColor3f(0,0.5,1);
+  glLineWidth(1.5);
+
+  for (int i=0; i<nFrames; i++) {
+
+      if (i + 1 == nFrames)
+        glColor3f(1,0,0);
+
+      glPushMatrix();
+      glMultMatrixf((GLfloat*) (tptr + 4*4*i));
+
+      glBegin(GL_LINES);
+      for (int j=0; j<NUM_LINES; j++) {
+        const int u = CAM_LINES[j][0], v = CAM_LINES[j][1];
+        glVertex3f(SZ*CAM_POINTS[u][0], SZ*CAM_POINTS[u][1], SZ*CAM_POINTS[u][2]);
+        glVertex3f(SZ*CAM_POINTS[v][0], SZ*CAM_POINTS[v][1], SZ*CAM_POINTS[v][2]);
+      }
+      glEnd();
+
+      glPopMatrix();
+  }
+}
+
+void Viewer::initVBO() {
+  glGenBuffers(1, &vbo);
+  glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+  // initialize buffer object
+  unsigned int size_xyz = 3 * points.size(0) * sizeof(float);
+  glBufferData(GL_ARRAY_BUFFER, size_xyz, 0, GL_DYNAMIC_DRAW);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+  // register this buffer object with CUDA
+  cudaGraphicsGLRegisterBuffer(&xyz_res, vbo, cudaGraphicsMapFlagsWriteDiscard);
+  cudaGraphicsMapResources(1, &xyz_res, 0);
+
+  glGenBuffers(1, &cbo);
+  glBindBuffer(GL_ARRAY_BUFFER, cbo);
+
+  // initialize buffer object
+  unsigned int size_rgb = 3 * points.size(0) * sizeof(uchar);
+  glBufferData(GL_ARRAY_BUFFER, size_rgb, 0, GL_DYNAMIC_DRAW);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+  // register this buffer object with CUDA
+  cudaGraphicsGLRegisterBuffer(&rgb_res, cbo, cudaGraphicsMapFlagsWriteDiscard);
+  cudaGraphicsMapResources(1, &rgb_res, 0);
+}
+
+void Viewer::destroyVBO() {
+  cudaGraphicsUnmapResources(1, &xyz_res, 0);
+  cudaGraphicsUnregisterResource(xyz_res);
+  glBindBuffer(1, vbo);
+  glDeleteBuffers(1, &vbo);
+
+  cudaGraphicsUnmapResources(1, &rgb_res, 0);
+  cudaGraphicsUnregisterResource(rgb_res);
+  glBindBuffer(1, cbo);
+  glDeleteBuffers(1, &cbo);
+}
+
 
 // PYBIND11 MODULE
 namespace py = pybind11;
