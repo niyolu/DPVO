@@ -48,9 +48,7 @@ def run(cfg, network, sequence_path, rgb_txt, calibration_yaml, viz=False, timei
             slam = DPVO(cfg, network, ht=H, wd=W, viz=viz)
 
         with Timer("SLAM", enabled=timeit):
-            print("running dpvo t=", t)
             slam(t, image, intrinsics)
-        # slam(t, image, intrinsics)
 
     reader.join()
 
@@ -81,7 +79,6 @@ def main():
     cfg.merge_from_list(args.opts)
 
     print("Running with config...")
-    print("SKR")
     print(args.settings_yaml)
 
     (poses, tstamps), (points, colors, calib) = run(cfg, args.network, 
