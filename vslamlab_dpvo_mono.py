@@ -37,9 +37,7 @@ def run(cfg, network, sequence_path, rgb_txt, calibration_yaml, viz=False, timei
     reader.start()
 
     while 1:
-        print("trying to get from queue")
         (t, image, intrinsics) = queue.get()
-        print("got data from queue: ", t)
         if t < 0: break
 
         image = torch.from_numpy(image).permute(2,0,1).cuda()
