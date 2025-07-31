@@ -13,7 +13,7 @@ from dpvo.dpvo import DPVO
 from dpvo.stream import image_stream
 from dpvo.utils import Timer
 
-if __name__ == "__main__":
+if __name__ == "__main__" and os.environ.get("DEBUGPY_ENABLE") == "1":
     import debugpy
     debugpy.listen(("localhost", 5678))
     print("Waiting for debugger attach on port 5678...")
